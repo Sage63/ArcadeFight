@@ -1105,6 +1105,10 @@ function endRound(reason) {
 function endGame(winner) {
   gameState = 'gameOver';
   winFocusFighter = winner === 'p1' ? p1 : p2;
+  // Snap camera partway to winner so final zoom starts instantly.
+  cameraZoom = 1.35;
+  cameraFocusX = winFocusFighter ? winFocusFighter.cx : W / 2;
+  cameraFocusY = winFocusFighter ? (winFocusFighter.cy - 44) : H / 2;
   if (gameMode === 'cpu') {
     if (winner === 'p1') showOverlay('YOU WIN', 'PRESS START TO REPLAY', '#00e5ff');
     else showOverlay('GAME OVER', 'YOU LOSE - PRESS START', '#ff4444');
@@ -1139,12 +1143,12 @@ function nextRound() {
 function updateWinCamera() {
   // Zoom only on final match winner (game over), not each round winner.
   const shouldFocus = gameState === 'gameOver' && winFocusFighter;
-  const targetZoom = shouldFocus ? 1.85 : 1;
+  const targetZoom = shouldFocus ? 2.05 : 1;
   const targetX = shouldFocus ? winFocusFighter.cx : W / 2;
-  const targetY = shouldFocus ? (winFocusFighter.cy - 40) : H / 2;
-  cameraZoom += (targetZoom - cameraZoom) * 0.07;
-  cameraFocusX += (targetX - cameraFocusX) * 0.07;
-  cameraFocusY += (targetY - cameraFocusY) * 0.07;
+  const targetY = shouldFocus ? (winFocusFighter.cy - 44) : H / 2;
+  cameraZoom += (targetZoom - cameraZoom) * 0.16;
+  cameraFocusX += (targetX - cameraFocusX) * 0.16;
+  cameraFocusY += (targetY - cameraFocusY) * 0.16;
 }
 
 function startCountdown() {
@@ -1201,6 +1205,14 @@ function gameLoop(ts) {
     checkHits(p2, p1);
 
     if (p1.hp <= 0 || p2.hp <= 0) endRound('ko');
+  }
+
+  // Keep fighters alive visually during countdown with idle loop animation.
+  if (gameState === 'countdown' && p1 && p2) {
+    if (p1.state !== 'ko' && p1.state !== 'hurt') p1.state = 'idle';
+    if (p2.state !== 'ko' && p2.state !== 'hurt') p2.state = 'idle';
+    p1.updateAnimation();
+    p2.updateAnimation();
   }
 
   // Keep one-shot animations (like KO/death) advancing during round-over freeze.
