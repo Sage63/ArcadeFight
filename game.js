@@ -39,12 +39,24 @@ let lastTime = 0;
 let particles = [];
 let hitEffects = [];
 let bgStars = [];
+let projectiles = [];
 let winFocusFighter = null;
 let cameraZoom = 1;
 let cameraFocusX = W / 2;
 let cameraFocusY = H / 2;
+let mobileControlLayout = 'large';
+let lastMobileVibrationAt = 0;
 
 const ATTACK_DURATIONS = { punch: 16, kick: 24, special: 32 };
+const STAMINA_MAX = 100;
+const STAMINA_REGEN_IDLE = 0.55;
+const STAMINA_REGEN_ACTIVE = 0.32;
+const STAMINA_BLOCK_DRAIN = 0.38;
+const STAMINA_COST = { punch: 16, kick: 24, special: 46 };
+const SPECIAL_PROJECTILE_DAMAGE = 22;
+const SPECIAL_PROJECTILE_SPEED = 11;
+const SPECIAL_PROJECTILE_RADIUS = 12;
+const SPECIAL_PROJECTILE_LIFE = 90;
 
 // Generate background stars once
 for (let i = 0; i < 60; i++) {
@@ -369,6 +381,8 @@ class Fighter {
     this.stateTimer = 0;
     this.blocking = false;
     this.specialMeter = 0; // 0-100
+    this.maxStamina = STAMINA_MAX;
+    this.stamina = STAMINA_MAX;
     this.hitbox = null;
     this.frameCount = 0;
     this.idlePhase = 0;
@@ -397,6 +411,8 @@ class Fighter {
   }
 
   startAttack(type, duration, cooldown) {
+    const cost = STAMINA_COST[type] || 0;
+    this.stamina = Math.max(0, this.stamina - cost);
     this.state = type;
     this.stateTimer = duration;
     this.attackDuration = duration;
@@ -415,6 +431,7 @@ class Fighter {
 
   getAttackBox() {
     if (!this.isAttacking()) return null;
+    if (this.state === 'special') return null;
     const reach = this.state === 'kick' ? 70 : (this.state === 'special' ? 110 : 58);
     const yOffset = this.state === 'kick' ? 20 : 8;
     const h = this.state === 'kick' ? 22 : 18;
@@ -469,6 +486,10 @@ class Fighter {
     if (this.attackCooldown > 0) this.attackCooldown--;
     if (this.blockCooldown > 0) this.blockCooldown--;
 
+    if (this.blocking) {
+      this.stamina = Math.max(0, this.stamina - STAMINA_BLOCK_DRAIN);
+    }
+
     // KO
     if (this.hp <= 0 && this.state !== 'ko') {
       this.state = 'ko';
@@ -494,20 +515,23 @@ class Fighter {
 
       // Block
       if (keys[this.controls.block] && this.onGround && this.blockCooldown === 0) {
-        this.blocking = true;
-        this.state = 'block';
-        this.stateTimer = 3;
+        if (this.stamina > 8) {
+          this.blocking = true;
+          this.state = 'block';
+          this.stateTimer = 3;
+        }
       }
 
       // Attack
       if (!this.isAttacking() && this.stateTimer === 0) {
-        if (keys[this.controls.special] && this.specialMeter >= 100) {
+        if (keys[this.controls.special] && this.specialMeter >= 100 && this.stamina >= STAMINA_COST.special) {
           this.startAttack('special', ATTACK_DURATIONS.special, 40);
           this.specialMeter = 0;
           spawnSpecialEffect(this);
-        } else if (keys[this.controls.kick] && this.attackCooldown === 0) {
+          spawnSpecialProjectile(this);
+        } else if (keys[this.controls.kick] && this.attackCooldown === 0 && this.stamina >= STAMINA_COST.kick) {
           this.startAttack('kick', ATTACK_DURATIONS.kick, 28);
-        } else if (keys[this.controls.punch] && this.attackCooldown === 0) {
+        } else if (keys[this.controls.punch] && this.attackCooldown === 0 && this.stamina >= STAMINA_COST.punch) {
           this.startAttack('punch', ATTACK_DURATIONS.punch, 18);
         }
       }
@@ -552,6 +576,10 @@ class Fighter {
 
     // Special meter fill (slow passive + on hit)
     if (this.specialMeter < 100) this.specialMeter = Math.min(100, this.specialMeter + 0.05);
+
+    // Stamina regen: faster while neutral, slower during active movement/actions.
+    const staminaRegen = (!this.isAttacking() && this.state !== 'block') ? STAMINA_REGEN_IDLE : STAMINA_REGEN_ACTIVE;
+    this.stamina = Math.min(this.maxStamina, this.stamina + staminaRegen);
 
     this.updateAnimation();
   }
@@ -650,6 +678,7 @@ function drawFighterSprite(ctx, fighter, dx, dy) {
 // ── PIXEL DRAWING HELPERS ──
 // ── SPECIAL EFFECT ──
 function spawnSpecialEffect(fighter) {
+  vibrateMobile([16, 26, 34], 120);
   for (let i = 0; i < 24; i++) {
     particles.push({
       x: fighter.cx,
@@ -665,6 +694,7 @@ function spawnSpecialEffect(fighter) {
 }
 
 function spawnHitEffect(x, y, color) {
+  vibrateMobile(14, 60);
   for (let i = 0; i < 12; i++) {
     particles.push({
       x, y,
@@ -681,6 +711,60 @@ function spawnHitEffect(x, y, color) {
 
 function spawnBlockEffect(x, y) {
   hitEffects.push({ x, y, life: 10, text: 'BLOCK' });
+}
+
+function spawnSpecialProjectile(fighter) {
+  const dir = fighter.facing;
+  projectiles.push({
+    owner: fighter,
+    x: fighter.cx + dir * (fighter.width / 2 + 12),
+    y: fighter.y + fighter.height * 0.45,
+    vx: dir * SPECIAL_PROJECTILE_SPEED,
+    radius: SPECIAL_PROJECTILE_RADIUS,
+    life: SPECIAL_PROJECTILE_LIFE,
+    damage: SPECIAL_PROJECTILE_DAMAGE,
+    color: fighter.def.specialColor,
+  });
+}
+
+function updateProjectiles() {
+  if (!p1 || !p2) return;
+
+  projectiles = projectiles.filter(pr => pr.life > 0 && pr.x > -40 && pr.x < W + 40);
+  projectiles.forEach(pr => {
+    pr.x += pr.vx;
+    pr.life--;
+
+    const target = pr.owner === p1 ? p2 : p1;
+    if (!target || target.state === 'ko') return;
+    const hb = target.getHurtbox();
+    const hit = pr.x + pr.radius > hb.x && pr.x - pr.radius < hb.x + hb.w && pr.y + pr.radius > hb.y && pr.y - pr.radius < hb.y + hb.h;
+    if (hit) {
+      const dmg = target.takeDamage(pr.damage, pr.owner);
+      if (dmg > 0) {
+        pr.owner.specialMeter = Math.min(100, pr.owner.specialMeter + 10);
+        spawnHitEffect(target.cx, target.cy - 16, pr.color);
+      } else if (target.blocking) {
+        spawnBlockEffect(target.cx, target.cy - 16);
+      }
+      pr.life = 0;
+    }
+  });
+}
+
+function drawProjectiles() {
+  projectiles.forEach(pr => {
+    const alpha = Math.max(0.4, pr.life / SPECIAL_PROJECTILE_LIFE);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = pr.color;
+    ctx.shadowBlur = 14;
+    ctx.shadowColor = pr.color;
+    ctx.beginPath();
+    ctx.arc(pr.x, pr.y, pr.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+  });
 }
 
 // ── BACKGROUND DRAWING ──
@@ -800,6 +884,83 @@ document.addEventListener('keydown', e => { keys[e.code] = true; e.preventDefaul
 document.addEventListener('keyup', e => { keys[e.code] = false; });
 const cpuKeys = {};
 
+function vibrateMobile(pattern, minGapMs = 0) {
+  if (!('vibrate' in navigator) || typeof navigator.vibrate !== 'function') return;
+  if (!window.matchMedia('(pointer: coarse)').matches) return;
+  const now = performance.now();
+  if (minGapMs > 0 && now - lastMobileVibrationAt < minGapMs) return;
+  lastMobileVibrationAt = now;
+  navigator.vibrate(pattern);
+}
+
+function syncMobileControlsMode() {
+  const root = document.getElementById('mobile-controls');
+  if (!root) return;
+  root.classList.toggle('hide-p2', gameMode === 'cpu');
+}
+
+function setMobileControlLayout(layout) {
+  if (layout !== 'compact' && layout !== 'large') return;
+  mobileControlLayout = layout;
+  const root = document.getElementById('mobile-controls');
+  if (!root) return;
+
+  root.classList.remove('compact', 'large');
+  root.classList.add(layout);
+
+  const compactBtn = document.getElementById('layout-compact');
+  const largeBtn = document.getElementById('layout-large');
+  if (compactBtn) compactBtn.classList.toggle('active', layout === 'compact');
+  if (largeBtn) largeBtn.classList.toggle('active', layout === 'large');
+}
+
+function bindMobileControls() {
+  const root = document.getElementById('mobile-controls');
+  if (!root) return;
+
+  const setButtonState = (btn, isDown) => {
+    const key = btn.dataset.key;
+    if (!key) return;
+    keys[key] = isDown;
+    btn.classList.toggle('active', isDown);
+  };
+
+  const releaseAll = () => {
+    root.querySelectorAll('[data-key]').forEach(btn => setButtonState(btn, false));
+  };
+
+  root.querySelectorAll('[data-key]').forEach(btn => {
+    btn.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      setButtonState(btn, true);
+    });
+
+    btn.addEventListener('pointerup', e => {
+      e.preventDefault();
+      setButtonState(btn, false);
+    });
+
+    btn.addEventListener('pointercancel', e => {
+      e.preventDefault();
+      setButtonState(btn, false);
+    });
+
+    btn.addEventListener('pointerleave', () => {
+      if (btn.classList.contains('active')) setButtonState(btn, false);
+    });
+  });
+
+  window.addEventListener('blur', releaseAll);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') releaseAll();
+  });
+
+  setMobileControlLayout(mobileControlLayout);
+  syncMobileControlsMode();
+}
+
+bindMobileControls();
+
 // Control maps
 const P1_CONTROLS = { left:'KeyA', right:'KeyD', jump:'KeyW', punch:'KeyF', kick:'KeyG', block:'KeyR', special:'KeyT' };
 const P2_CONTROLS = { left:'ArrowLeft', right:'ArrowRight', jump:'ArrowUp', punch:'Comma', kick:'Period', block:'Slash', special:'Quote' };
@@ -829,6 +990,7 @@ function renderCharacterSelect() {
   document.getElementById('diff-medium').classList.toggle('active', cpuDifficulty === 'medium');
   document.getElementById('diff-hard').classList.toggle('active', cpuDifficulty === 'hard');
   document.getElementById('difficulty-row').style.display = gameMode === 'cpu' ? 'flex' : 'none';
+  syncMobileControlsMode();
 
   if (selectPhase === 'fighters') {
     if (selectTurn === 1) turn.textContent = 'PLAYER 1 PICK YOUR FIGHTER';
@@ -867,6 +1029,7 @@ function renderCharacterSelect() {
 function setGameMode(mode) {
   if (mode !== 'pvp' && mode !== 'cpu') return;
   gameMode = mode;
+  syncMobileControlsMode();
   renderCharacterSelect();
 }
 
@@ -957,7 +1120,7 @@ function openCharacterSelect() {
   document.getElementById('title-screen').style.display = 'none';
   document.getElementById('hud').style.display = 'none';
   document.getElementById('game-canvas').style.display = 'none';
-  document.getElementById('character-select').style.display = 'block';
+  document.getElementById('character-select').style.display = 'flex';
   selectTurn = 1;
   selectPhase = 'fighters';
   renderCharacterSelect();
@@ -973,6 +1136,7 @@ function beginMatch() {
   roundNum = 1;
   particles = [];
   hitEffects = [];
+  projectiles = [];
 
   createFighters();
   updateHUD();
@@ -987,13 +1151,24 @@ window.lockSelection = lockSelection;
 window.pickMap = pickMap;
 window.setGameMode = setGameMode;
 window.setDifficulty = setDifficulty;
+window.setMobileControlLayout = setMobileControlLayout;
 
 // ── HUD ──
 function updateHUD() {
   const p1Pct = (p1.hp / p1.maxHP * 100).toFixed(1);
   const p2Pct = (p2.hp / p2.maxHP * 100).toFixed(1);
+  const p1StaPct = (p1.stamina / p1.maxStamina * 100).toFixed(1);
+  const p2StaPct = (p2.stamina / p2.maxStamina * 100).toFixed(1);
+  const p1SpPct = p1.specialMeter.toFixed(1);
+  const p2SpPct = p2.specialMeter.toFixed(1);
   document.getElementById('p1-health').style.width = p1Pct + '%';
   document.getElementById('p2-health').style.width = p2Pct + '%';
+  document.getElementById('p1-stamina').style.width = p1StaPct + '%';
+  document.getElementById('p2-stamina').style.width = p2StaPct + '%';
+  document.getElementById('p1-special').style.width = p1SpPct + '%';
+  document.getElementById('p2-special').style.width = p2SpPct + '%';
+  document.getElementById('p1-special').classList.toggle('ready', p1.specialMeter >= 100);
+  document.getElementById('p2-special').classList.toggle('ready', p2.specialMeter >= 100);
   document.getElementById('p1-name').textContent = p1.name;
   document.getElementById('p2-name').textContent = p2.name;
   updateStars();
@@ -1092,13 +1267,14 @@ function endRound(reason) {
     showOverlay(winnerName + tag, '', winCol);
   }
 
+  if (p1Wins >= 2 || p2Wins >= 2) {
+    endGame(winner);
+    return;
+  }
+
   setTimeout(() => {
-    if (p1Wins >= 2 || p2Wins >= 2) {
-      endGame(winner);
-    } else {
-      hideOverlay();
-      nextRound();
-    }
+    hideOverlay();
+    nextRound();
   }, 2500);
 }
 
@@ -1131,6 +1307,7 @@ function nextRound() {
   roundNum++;
   particles = [];
   hitEffects = [];
+  projectiles = [];
   winFocusFighter = null;
   cameraZoom = 1;
   cameraFocusX = W / 2;
@@ -1146,6 +1323,12 @@ function updateWinCamera() {
   const targetZoom = shouldFocus ? 2.05 : 1;
   const targetX = shouldFocus ? winFocusFighter.cx : W / 2;
   const targetY = shouldFocus ? (winFocusFighter.cy - 44) : H / 2;
+  if (shouldFocus) {
+    cameraZoom = targetZoom;
+    cameraFocusX = targetX;
+    cameraFocusY = targetY;
+    return;
+  }
   cameraZoom += (targetZoom - cameraZoom) * 0.16;
   cameraFocusX += (targetX - cameraFocusX) * 0.16;
   cameraFocusY += (targetY - cameraFocusY) * 0.16;
@@ -1203,6 +1386,7 @@ function gameLoop(ts) {
     }
     checkHits(p1, p2);
     checkHits(p2, p1);
+    updateProjectiles();
 
     if (p1.hp <= 0 || p2.hp <= 0) endRound('ko');
   }
@@ -1259,6 +1443,7 @@ function gameLoop(ts) {
   if (p1 && p2) {
     p1.draw(ctx);
     p2.draw(ctx);
+    drawProjectiles();
   }
 
   // Shadow under fighters

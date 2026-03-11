@@ -12,8 +12,12 @@
 
   <!-- TITLE -->
   <div id="title-screen">
-    <h1>PIXEL BRAWL</h1>
-    <h2>★ 8-BIT ARCADE FIGHTER ★</h2>
+    <div class="title-hero">
+      <div class="title-chip">ARCADE MODE ONLINE</div>
+      <h1>PIXEL BRAWL</h1>
+      <h2>★ 8-BIT ARCADE FIGHTER ★</h2>
+      <p class="title-tagline">BEST OF 3 · SPECIAL MOVES · LOCAL VS OR CPU</p>
+    </div>
 
     <div class="controls-grid">
       <div class="controls-box p1">
@@ -34,6 +38,12 @@
         / — Block<br>
         ' — Special ✦
       </div>
+    </div>
+
+    <div class="menu-highlights">
+      <span>FAST ROUNDS</span>
+      <span>PROJECTILE SPECIALS</span>
+      <span>MOBILE TOUCH READY</span>
     </div>
 
     <button class="start-btn" id="start-btn" onclick="startGame()">▶ PRESS START</button>
@@ -63,16 +73,32 @@
   <!-- HUD -->
   <div id="hud">
     <span class="hud-name p1" id="p1-name">KAI</span>
-    <div class="health-bar-outer">
-      <div class="health-bar-inner p1" id="p1-health" style="width:100%"></div>
+    <div class="bar-stack">
+      <div class="health-bar-outer">
+        <div class="health-bar-inner p1" id="p1-health" style="width:100%"></div>
+      </div>
+      <div class="stamina-bar-outer">
+        <div class="stamina-bar-inner p1" id="p1-stamina" style="width:100%"></div>
+      </div>
+      <div class="special-bar-outer">
+        <div class="special-bar-inner p1" id="p1-special" style="width:0%"></div>
+      </div>
     </div>
     <div class="hud-center">
       <div id="timer">99</div>
       <div class="round-dots-row p1" id="p1-stars"></div>
       <div class="round-dots-row p2" id="p2-stars"></div>
     </div>
-    <div class="health-bar-outer">
-      <div class="health-bar-inner p2" id="p2-health" style="width:100%"></div>
+    <div class="bar-stack">
+      <div class="health-bar-outer">
+        <div class="health-bar-inner p2" id="p2-health" style="width:100%"></div>
+      </div>
+      <div class="stamina-bar-outer">
+        <div class="stamina-bar-inner p2" id="p2-stamina" style="width:100%"></div>
+      </div>
+      <div class="special-bar-outer">
+        <div class="special-bar-inner p2" id="p2-special" style="width:0%"></div>
+      </div>
     </div>
     <span class="hud-name p2" id="p2-name">REX</span>
   </div>
@@ -87,6 +113,42 @@
   </div>
 
   <div id="footer">USE KEYBOARD · 2 PLAYERS LOCAL · BEST OF 3 ROUNDS</div>
+
+  <div id="mobile-controls" aria-label="Mobile Controls">
+    <div class="mobile-layout-toggle" role="group" aria-label="Mobile Layout Toggle">
+      <span class="layout-label">TOUCH LAYOUT</span>
+      <button class="layout-btn" id="layout-compact" onclick="setMobileControlLayout('compact')">COMPACT</button>
+      <button class="layout-btn active" id="layout-large" onclick="setMobileControlLayout('large')">LARGE</button>
+    </div>
+    <div class="mobile-controls-pads">
+      <div class="mobile-pad p1">
+        <div class="mobile-dpad">
+          <button class="mobile-btn move" data-key="KeyA">◀</button>
+          <button class="mobile-btn jump" data-key="KeyW">▲</button>
+          <button class="mobile-btn move" data-key="KeyD">▶</button>
+        </div>
+        <div class="mobile-actions">
+          <button class="mobile-btn attack" data-key="KeyF">P</button>
+          <button class="mobile-btn attack" data-key="KeyG">K</button>
+          <button class="mobile-btn defend" data-key="KeyR">B</button>
+          <button class="mobile-btn special" data-key="KeyT">SP</button>
+        </div>
+      </div>
+      <div class="mobile-pad p2">
+        <div class="mobile-dpad">
+          <button class="mobile-btn move" data-key="ArrowLeft">◀</button>
+          <button class="mobile-btn jump" data-key="ArrowUp">▲</button>
+          <button class="mobile-btn move" data-key="ArrowRight">▶</button>
+        </div>
+        <div class="mobile-actions">
+          <button class="mobile-btn attack" data-key="Comma">P</button>
+          <button class="mobile-btn attack" data-key="Period">K</button>
+          <button class="mobile-btn defend" data-key="Slash">B</button>
+          <button class="mobile-btn special" data-key="Quote">SP</button>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script src="game.js"></script>
