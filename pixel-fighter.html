@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PIXEL BRAWL — 8-BIT FIGHTER</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="game-wrapper">
+
+  <!-- TITLE -->
+  <div id="title-screen">
+    <h1>PIXEL BRAWL</h1>
+    <h2>★ 8-BIT ARCADE FIGHTER ★</h2>
+
+    <div class="controls-grid">
+      <div class="controls-box p1">
+        <h3>── PLAYER 1 ──</h3>
+        A / D — Move<br>
+        W — Jump<br>
+        F — Punch<br>
+        G — Kick<br>
+        R — Block<br>
+        T — Special ✦
+      </div>
+      <div class="controls-box p2">
+        <h3>── PLAYER 2 ──</h3>
+        ← / → — Move<br>
+        ↑ — Jump<br>
+        , — Punch<br>
+        . — Kick<br>
+        / — Block<br>
+        ' — Special ✦
+      </div>
+    </div>
+
+    <button class="start-btn" id="start-btn" onclick="startGame()">▶ PRESS START</button>
+  </div>
+
+  <div id="character-select">
+    <h2>CHARACTER SELECT</h2>
+    <div class="select-options">
+      <div class="option-row" id="mode-row">
+        <button class="pill-btn" id="mode-pvp" onclick="setGameMode('pvp')">2 PLAYER</button>
+        <button class="pill-btn" id="mode-cpu" onclick="setGameMode('cpu')">VS COMPUTER</button>
+      </div>
+      <div class="option-row" id="difficulty-row">
+        <button class="pill-btn" id="diff-easy" onclick="setDifficulty('easy')">EASY</button>
+        <button class="pill-btn" id="diff-medium" onclick="setDifficulty('medium')">MEDIUM</button>
+        <button class="pill-btn" id="diff-hard" onclick="setDifficulty('hard')">HARD</button>
+      </div>
+    </div>
+    <div id="select-turn">PLAYER 1 PICK YOUR FIGHTER</div>
+    <div class="select-grid" id="select-grid"></div>
+    <div class="select-actions">
+      <button class="select-btn" id="lock-btn" onclick="lockSelection()">LOCK P1</button>
+    </div>
+    <div id="select-summary"></div>
+  </div>
+
+  <!-- HUD -->
+  <div id="hud">
+    <span class="hud-name p1" id="p1-name">KAI</span>
+    <div class="health-bar-outer">
+      <div class="health-bar-inner p1" id="p1-health" style="width:100%"></div>
+    </div>
+    <div class="hud-center">
+      <div id="timer">99</div>
+      <div class="round-dots-row p1" id="p1-stars"></div>
+      <div class="round-dots-row p2" id="p2-stars"></div>
+    </div>
+    <div class="health-bar-outer">
+      <div class="health-bar-inner p2" id="p2-health" style="width:100%"></div>
+    </div>
+    <span class="hud-name p2" id="p2-name">REX</span>
+  </div>
+
+  <!-- CANVAS -->
+  <canvas id="game-canvas" width="960" height="420"></canvas>
+
+  <!-- OVERLAY -->
+  <div id="overlay">
+    <div id="overlay-text"></div>
+    <div id="overlay-sub"></div>
+  </div>
+
+  <div id="footer">USE KEYBOARD · 2 PLAYERS LOCAL · BEST OF 3 ROUNDS</div>
+</div>
+
+<script src="game.js"></script>
+</body>
+</html>
