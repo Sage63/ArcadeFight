@@ -730,6 +730,10 @@ function triggerSpecialFlash() {
   overlay.classList.remove('active');
   void overlay.offsetWidth;
   overlay.classList.add('active');
+  
+  setTimeout(() => {
+    overlay.classList.remove('active');
+  }, 420);
 }
 
 function spawnHitEffect(x, y, color) {
