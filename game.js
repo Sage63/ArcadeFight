@@ -67,6 +67,7 @@ const ROUND_FINISH_SLOWMO_FRAMES = 44;
 const ROUND_FINISH_SLOWMO_SKIP = 3;
 const ROUND_ANNOUNCE_TOTAL_MS = 3600;
 const INTER_ROUND_DELAY_MS = 4600;
+const KO_TO_OUTCOME_DELAY_MS = 2200;
 
 const SFX_SRC = {
   coin: 'assets/sfx/8d82b5_Street_Fighter_Coin_Sound_Effect.mp3',
@@ -149,6 +150,13 @@ function queueOutcomeSfx(outcome, extraDelayMs = 0) {
   setTimeout(() => playOutcomeSfx(outcome), delay);
 }
 
+function playKoThenOutcome(outcome) {
+  playSfx('ko', 1);
+  setTimeout(() => {
+    playOutcomeSfx(outcome);
+  }, KO_TO_OUTCOME_DELAY_MS);
+}
+
 function triggerRoundFinishSlowmo(reason) {
   if (gameState !== 'fighting') return;
   clearInterval(timerInterval);
@@ -156,6 +164,23 @@ function triggerRoundFinishSlowmo(reason) {
   pendingRoundEndReason = reason;
   finishSlowmoFrames = ROUND_FINISH_SLOWMO_FRAMES;
   finishSlowmoTick = 0;
+
+  if (reason === 'ko' && p1 && p2) {
+    const winner = p1.hp <= 0 ? p2 : p1;
+    const loser = winner === p1 ? p2 : p1;
+
+    // Apply KO/taunt immediately so these animations are what get slowed down.
+    loser.state = 'ko';
+    loser.stateTimer = 9999;
+    loser.vx = 0;
+    loser.vy = 0;
+    loser.onGround = true;
+
+    winner.state = 'taunt';
+    winner.stateTimer = 9999;
+    winner.vx = 0;
+    winFocusFighter = winner;
+  }
 }
 
 // Generate background stars once
@@ -524,9 +549,27 @@ class Fighter {
     this.animTick = 0;
     this.attackHasHit = false;
     this.attackDuration = 0;
+    this.inputLatch = {
+      jump: false,
+      punch: false,
+      kick: false,
+      special: false,
+    };
     // Shake effect
     this.shakeX = 0;
     this.shakeTimer = 0;
+  }
+
+  consumePress(keys, action) {
+    const code = this.controls[action];
+    const isDown = !!keys[code];
+    if (!isDown) {
+      this.inputLatch[action] = false;
+      return false;
+    }
+    if (this.inputLatch[action]) return false;
+    this.inputLatch[action] = true;
+    return true;
   }
 
   get cx() { return this.x + this.width / 2; }
@@ -652,6 +695,11 @@ class Fighter {
     if (this.state !== 'hurt' && this.state !== 'ko') {
       this.blocking = false;
 
+      const jumpPressed = this.consumePress(keys, 'jump');
+      const punchPressed = this.consumePress(keys, 'punch');
+      const kickPressed = this.consumePress(keys, 'kick');
+      const specialPressed = this.consumePress(keys, 'special');
+
       // Block
       if (keys[this.controls.block] && this.onGround && this.blockCooldown === 0) {
         if (this.stamina > 8) {
@@ -663,18 +711,18 @@ class Fighter {
 
       // Attack
       if (!this.isAttacking() && this.stateTimer === 0) {
-        if (keys[this.controls.special] && this.specialMeter >= 100 && this.stamina >= STAMINA_COST.special) {
+        if (specialPressed && this.specialMeter >= 100 && this.stamina >= STAMINA_COST.special) {
           this.startAttack('special', ATTACK_DURATIONS.special, 40);
           lastCombatSfxAt = performance.now();
           playSfx('hadouken', 0.95);
           this.specialMeter = 0;
           spawnSpecialEffect(this);
           spawnSpecialProjectile(this);
-        } else if (keys[this.controls.kick] && this.attackCooldown === 0 && this.stamina >= STAMINA_COST.kick) {
+        } else if (kickPressed && this.attackCooldown === 0 && this.stamina >= STAMINA_COST.kick) {
           this.startAttack('kick', ATTACK_DURATIONS.kick, 28);
           lastCombatSfxAt = performance.now();
           playSfx('kick', 0.8);
-        } else if (keys[this.controls.punch] && this.attackCooldown === 0 && this.stamina >= STAMINA_COST.punch) {
+        } else if (punchPressed && this.attackCooldown === 0 && this.stamina >= STAMINA_COST.punch) {
           this.startAttack('punch', ATTACK_DURATIONS.punch, 18);
           lastCombatSfxAt = performance.now();
           playSfx('punch', 0.8);
@@ -695,7 +743,7 @@ class Fighter {
         }
 
         // Jump
-        if (keys[this.controls.jump] && this.onGround) {
+        if (jumpPressed && this.onGround) {
           this.vy = this.def.jumpForce;
           this.onGround = false;
           this.state = 'jump';
@@ -1484,10 +1532,22 @@ function showOverlay(text, sub, color) {
   const ot = document.getElementById('overlay-text');
   const os = document.getElementById('overlay-sub');
   ov.style.display = 'block';
+  ot.classList.remove('ko-callout');
   ot.textContent = text;
   ot.style.color = color || '#ffd700';
   os.textContent = sub || '';
   os.style.display = sub ? 'block' : 'none';
+}
+
+function showKoOverlay() {
+  const ov = document.getElementById('overlay');
+  const ot = document.getElementById('overlay-text');
+  const os = document.getElementById('overlay-sub');
+  ov.style.display = 'block';
+  ot.classList.add('ko-callout');
+  ot.textContent = 'K.O.';
+  os.textContent = '';
+  os.style.display = 'none';
 }
 
 function hideOverlay() {
@@ -1513,6 +1573,9 @@ function startRoundTimer() {
 function endRound(reason) {
   if (gameState === 'roundOver' || gameState === 'gameOver') return;
   gameState = 'roundOver';
+  finishSlowmoFrames = 0;
+  finishSlowmoTick = 0;
+  pendingRoundEndReason = null;
   clearInterval(timerInterval);
 
   let winner = null;
@@ -1544,6 +1607,10 @@ function endRound(reason) {
   updateStars();
 
   const isFinalRound = p1Wins >= 2 || p2Wins >= 2;
+  if (isFinalRound) {
+    endGame(winner, reason);
+    return;
+  }
 
   const winCol = winner === 'p1' ? '#00e5ff' : '#ff4444';
   if (gameMode === 'cpu') {
@@ -1560,11 +1627,6 @@ function endRound(reason) {
     showOverlay(winnerName + tag, '', winCol);
   }
 
-  if (p1Wins >= 2 || p2Wins >= 2) {
-    endGame(winner, reason);
-    return;
-  }
-
   setTimeout(() => {
     hideOverlay();
     nextRound();
@@ -1572,37 +1634,52 @@ function endRound(reason) {
 }
 
 function endGame(winner, reason = 'ko') {
-  gameState = 'gameOver';
+  const isKoFinish = reason === 'ko';
+  gameState = isKoFinish ? 'roundOver' : 'gameOver';
+  finishSlowmoFrames = 0;
+  finishSlowmoTick = 0;
+  pendingRoundEndReason = null;
   winFocusFighter = winner === 'p1' ? p1 : p2;
-  // Snap camera partway to winner so final zoom starts instantly.
-  cameraZoom = 1.35;
-  cameraFocusX = winFocusFighter ? winFocusFighter.cx : W / 2;
-  cameraFocusY = winFocusFighter ? (winFocusFighter.cy - 44) : H / 2;
-  if (reason === 'ko') {
+
+  const showFinalWinner = () => {
+    gameState = 'gameOver';
+    // Start winner zoom only after KO callout has finished.
+    cameraZoom = 1.35;
+    cameraFocusX = winFocusFighter ? winFocusFighter.cx : W / 2;
+    cameraFocusY = winFocusFighter ? (winFocusFighter.cy - 44) : H / 2;
+
+    if (gameMode === 'cpu') {
+      if (winner === 'p1') {
+        showOverlay('YOU WIN', 'PRESS START TO REPLAY', '#00e5ff');
+        queueOutcomeSfx('win');
+      } else {
+        showOverlay('GAME OVER', 'YOU LOSE - PRESS START', '#ff4444');
+        queueOutcomeSfx('lose');
+      }
+    } else {
+      const winnerName = winner === 'p1' ? p1.name : p2.name;
+      const winCol = winner === 'p1' ? '#00e5ff' : '#ff4444';
+      showOverlay('🏆 ' + winnerName, 'PRESS START TO REPLAY', winCol);
+    }
+
+    document.getElementById('overlay-sub').style.display = 'block';
+    document.getElementById('overlay').addEventListener('click', () => openCharacterSelect(), { once: true });
+    document.addEventListener('keydown', function restartHandler(e) {
+      if (e.code === 'Enter' || e.code === 'Space') {
+        document.removeEventListener('keydown', restartHandler);
+        openCharacterSelect();
+      }
+    });
+  };
+
+  if (isKoFinish) {
+    showKoOverlay();
     playSfx('ko', 1);
+    setTimeout(showFinalWinner, KO_TO_OUTCOME_DELAY_MS);
+    return;
   }
 
-  if (gameMode === 'cpu') {
-    if (winner === 'p1') {
-      showOverlay('YOU WIN', 'PRESS START TO REPLAY', '#00e5ff');
-      queueOutcomeSfx('win', reason === 'ko' ? 1200 : 0);
-    } else {
-      showOverlay('GAME OVER', 'YOU LOSE - PRESS START', '#ff4444');
-      queueOutcomeSfx('lose', reason === 'ko' ? 1200 : 0);
-    }
-  } else {
-    const winnerName = winner === 'p1' ? p1.name : p2.name;
-    const winCol = winner === 'p1' ? '#00e5ff' : '#ff4444';
-    showOverlay('🏆 ' + winnerName, 'PRESS START TO REPLAY', winCol);
-  }
-  document.getElementById('overlay-sub').style.display = 'block';
-  document.getElementById('overlay').addEventListener('click', () => openCharacterSelect(), { once: true });
-  document.addEventListener('keydown', function restartHandler(e) {
-    if (e.code === 'Enter' || e.code === 'Space') {
-      document.removeEventListener('keydown', restartHandler);
-      openCharacterSelect();
-    }
-  });
+  showFinalWinner();
 }
 
 function nextRound() {

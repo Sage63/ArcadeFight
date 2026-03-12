@@ -209,7 +209,6 @@
   .mode-banner {
     text-align: center;
     font-size: 9px;
-    color: #cfd6ff;
     margin-bottom: 16px;
     letter-spacing: 2px;
   }
@@ -242,14 +241,11 @@
     box-shadow: 0 0 16px rgba(255, 215, 0, 0.35), 0 8px 16px rgba(0, 0, 0, 0.5);
   }
 
-  .mode-icon {
-    font-size: 48px;
-  }
-
   .mode-name {
     font-size: 12px;
     color: var(--gold);
     letter-spacing: 1px;
+    text-align: center;
   }
 
   .mode-desc {
@@ -741,6 +737,18 @@
     white-space: nowrap;
   }
 
+  #overlay-text.ko-callout {
+    color: #ff2b2b !important;
+    text-shadow:
+      -2px -2px 0 #ffffff,
+      2px -2px 0 #ffffff,
+      -2px 2px 0 #ffffff,
+      2px 2px 0 #ffffff,
+      5px 5px 0 #640000,
+      0 0 14px rgba(255, 60, 60, 0.55);
+    letter-spacing: 2px;
+  }
+
   #overlay-sub {
     font-size: 10px;
     color: var(--gold);
@@ -900,8 +908,22 @@
     }
 
     .mode-grid {
-      grid-template-columns: 1fr;
-      gap: 10px;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+      padding: 0 6px;
+    }
+
+    .mode-name {
+      font-size: 10px;
+      text-align: center;
+    }
+
+    .mode-desc {
+      font-size: 7px;
+    }
+
+    .mode-card {
+      padding: 18px 12px;
     }
 
     .select-grid {
