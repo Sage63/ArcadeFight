@@ -66,17 +66,19 @@
     bottom: 0;
     z-index: 500;
     pointer-events: none;
-    background: radial-gradient(circle at center, rgba(255, 255, 255, 0.8), transparent 50%);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(255, 220, 100, 0.85));
   }
 
   #special-effect-overlay.active {
     display: block;
-    animation: specialBgFlash 0.35s ease-out;
+    animation: specialBgFlash 0.48s cubic-bezier(0.25, 0, 0.8, 1);
   }
 
   @keyframes specialBgFlash {
-    0% { opacity: 1; }
-    100% { opacity: 0; }
+    0% { opacity: 1; transform: scale(1); }
+    35% { opacity: 0.65; }
+    60% { opacity: 0.25; transform: scale(1.02); }
+    100% { opacity: 0; transform: scale(1); }
   }
 
   /* ── TITLE SCREEN ── */

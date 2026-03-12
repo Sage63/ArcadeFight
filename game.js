@@ -46,6 +46,8 @@ let cameraFocusX = W / 2;
 let cameraFocusY = H / 2;
 let mobileControlLayout = 'large';
 let lastMobileVibrationAt = 0;
+let screenShake = 0;
+let specialFreezeFrames = 0;
 
 const ATTACK_DURATIONS = { punch: 16, kick: 24, special: 32 };
 const STAMINA_MAX = 100;
@@ -679,19 +681,45 @@ function drawFighterSprite(ctx, fighter, dx, dy) {
 // ── PIXEL DRAWING HELPERS ──
 // ── SPECIAL EFFECT ──
 function spawnSpecialEffect(fighter) {
-  vibrateMobile([16, 26, 34], 120);
-  specialEffectActive = 35;
+  vibrateMobile([12, 18, 24, 14], 120);
+  specialEffectActive = 45;
+  screenShake = 14;
+  specialFreezeFrames = 6;
   triggerSpecialFlash();
-  for (let i = 0; i < 24; i++) {
+  
+  // Main burst - intense particle cloud
+  for (let i = 0; i < 48; i++) {
+    const angle = (Math.PI * 2 * i) / 48;
+    const speed = 16 + Math.random() * 12;
+    const vx = Math.cos(angle) * speed;
+    const vy = Math.sin(angle) * speed;
     particles.push({
       x: fighter.cx,
       y: fighter.cy,
-      vx: (Math.random() - 0.5) * 14,
-      vy: (Math.random() - 0.8) * 12,
-      life: 40 + Math.random() * 20,
-      maxLife: 60,
+      vx: vx,
+      vy: vy,
+      life: 50 + Math.random() * 30,
+      maxLife: 80,
       color: fighter.def.specialColor,
-      size: 4 + Math.random() * 6,
+      size: 5 + Math.random() * 8,
+    });
+  }
+  
+  // Outer ring of secondary particles
+  for (let i = 0; i < 32; i++) {
+    const angle = (Math.PI * 2 * i) / 32;
+    const speed = 20 + Math.random() * 10;
+    const vx = Math.cos(angle) * speed;
+    const vy = Math.sin(angle) * speed;
+    particles.push({
+      x: fighter.cx,
+      y: fighter.cy,
+      vx: vx,
+      vy: vy,
+      life: 35 + Math.random() * 20,
+      maxLife: 55,
+      color: '#ffffff',
+      size: 2 + Math.random() * 4,
     });
   }
 }
@@ -1405,11 +1433,25 @@ window.startGame = startGame;
 function gameLoop(ts) {
   const dt = ts - lastTime;
   lastTime = ts;
+  
+  if (specialFreezeFrames > 0) {
+    specialFreezeFrames--;
+    if (animFrame) animFrame = requestAnimationFrame(gameLoop);
+    return;
+  }
+  
+  if (screenShake > 0) screenShake--;
 
   updateWinCamera();
 
   ctx.clearRect(0, 0, W, H);
   ctx.save();
+  
+  if (screenShake > 0) {
+    const shake = (screenShake / 14) * 8;
+    ctx.translate((Math.random() - 0.5) * shake * 2, (Math.random() - 0.5) * shake * 2);
+  }
+  
   if (cameraZoom > 1.001) {
     const clampedX = Math.max(W * 0.22, Math.min(W * 0.78, cameraFocusX));
     const clampedY = Math.max(H * 0.35, Math.min(H * 0.72, cameraFocusY));
