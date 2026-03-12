@@ -53,7 +53,7 @@ const STAMINA_REGEN_IDLE = 0.55;
 const STAMINA_REGEN_ACTIVE = 0.32;
 const STAMINA_BLOCK_DRAIN = 0.38;
 const STAMINA_COST = { punch: 16, kick: 24, special: 46 };
-const SPECIAL_PROJECTILE_DAMAGE = 22;
+const SPECIAL_PROJECTILE_DAMAGE = 36;
 const SPECIAL_PROJECTILE_SPEED = 11;
 const SPECIAL_PROJECTILE_RADIUS = 12;
 const SPECIAL_PROJECTILE_LIFE = 90;
@@ -234,9 +234,10 @@ const ROSTER = Object.keys(FIGHTER_DEFS);
 let selectedP1Key = ROSTER[0];
 let selectedP2Key = ROSTER[3] || ROSTER[1];
 let selectTurn = 1;
-let selectPhase = 'fighters';
+let selectPhase = 'mode';
 let gameMode = 'pvp';
 let cpuDifficulty = 'medium';
+let specialEffectActive = 0;
 
 const AI_DIFFICULTY = {
   easy: { attackRange: 95, approachRange: 145, attackChance: 0.03, specialChance: 0.005, jumpChance: 0.003, blockChance: 0.12 },
@@ -679,6 +680,8 @@ function drawFighterSprite(ctx, fighter, dx, dy) {
 // ── SPECIAL EFFECT ──
 function spawnSpecialEffect(fighter) {
   vibrateMobile([16, 26, 34], 120);
+  specialEffectActive = 35;
+  triggerSpecialFlash();
   for (let i = 0; i < 24; i++) {
     particles.push({
       x: fighter.cx,
@@ -691,6 +694,14 @@ function spawnSpecialEffect(fighter) {
       size: 4 + Math.random() * 6,
     });
   }
+}
+
+function triggerSpecialFlash() {
+  const overlay = document.getElementById('special-effect-overlay');
+  if (!overlay) return;
+  overlay.classList.remove('active');
+  void overlay.offsetWidth;
+  overlay.classList.add('active');
 }
 
 function spawnHitEffect(x, y, color) {
@@ -984,8 +995,6 @@ function renderCharacterSelect() {
   const mapName = MAP_DEFS[selectedMapKey]?.name || '-';
   const modeText = gameMode === 'cpu' ? `VS CPU (${cpuDifficulty.toUpperCase()})` : '2 PLAYER';
 
-  document.getElementById('mode-pvp').classList.toggle('active', gameMode === 'pvp');
-  document.getElementById('mode-cpu').classList.toggle('active', gameMode === 'cpu');
   document.getElementById('diff-easy').classList.toggle('active', cpuDifficulty === 'easy');
   document.getElementById('diff-medium').classList.toggle('active', cpuDifficulty === 'medium');
   document.getElementById('diff-hard').classList.toggle('active', cpuDifficulty === 'hard');
@@ -993,23 +1002,21 @@ function renderCharacterSelect() {
   syncMobileControlsMode();
 
   if (selectPhase === 'fighters') {
-    if (selectTurn === 1) turn.textContent = 'PLAYER 1 PICK YOUR FIGHTER';
-    else turn.textContent = gameMode === 'cpu' ? 'SELECT CPU FIGHTER' : 'PLAYER 2 PICK YOUR FIGHTER';
-    lockBtn.textContent = selectTurn === 1 ? 'LOCK P1' : 'LOCK P2';
+    turn.textContent = 'PLAYER 1 PICK YOUR FIGHTER';
+    lockBtn.textContent = gameMode === 'cpu' ? 'CONFIRM & LOCK' : 'LOCK P1';
 
     grid.innerHTML = ROSTER.map(key => {
       const c = FIGHTER_DEFS[key];
       const p1Class = selectedP1Key === key ? 'selected-p1' : '';
-      const p2Class = selectedP2Key === key ? 'selected-p2' : '';
-      const activeClass = (selectTurn === 1 && selectedP1Key === key) || (selectTurn === 2 && selectedP2Key === key) ? 'active-turn' : '';
-      return `<div class="char-card ${p1Class} ${p2Class} ${activeClass}" onclick="pickCharacter('${key}')">
+      const activeClass = selectedP1Key === key ? 'active-turn' : '';
+      return `<div class="char-card ${p1Class} ${activeClass}" onclick="pickCharacter('${key}')">
         <div class="char-name">${c.name}</div>
         <div class="char-stat">HP ${c.maxHP}</div>
         <div class="char-stat">SPD ${c.speed.toFixed(1)} · JMP ${Math.abs(c.jumpForce).toFixed(1)}</div>
         <div class="char-stat">${c.special}</div>
       </div>`;
     }).join('');
-  } else {
+  } else if (selectPhase === 'map') {
     turn.textContent = 'PICK YOUR MAP';
     lockBtn.textContent = 'START FIGHT';
 
@@ -1080,23 +1087,37 @@ function updateCPUInput(cpu, target) {
 
 function pickCharacter(key) {
   if (!FIGHTER_DEFS[key]) return;
-  if (selectTurn === 1) selectedP1Key = key;
-  else selectedP2Key = key;
-  renderCharacterSelect();
+  if (selectTurn === 1) {
+    selectedP1Key = key;
+    if (gameMode === 'cpu') {
+      autoPickCPUCharacter();
+      selectPhase = 'map';
+      renderCharacterSelect();
+    } else {
+      selectTurn = 2;
+      renderCharacterSelect();
+    }
+  } else {
+    selectedP2Key = key;
+    renderCharacterSelect();
+  }
+}
+
+function autoPickCPUCharacter() {
+  const randomIdx = Math.floor(Math.random() * ROSTER.length);
+  selectedP2Key = ROSTER[randomIdx];
 }
 
 function lockSelection() {
   if (selectPhase === 'fighters') {
-    if (selectTurn === 1) {
-      selectTurn = 2;
+    if (selectTurn === 2) {
+      selectPhase = 'map';
       renderCharacterSelect();
       return;
     }
-    selectPhase = 'map';
-    renderCharacterSelect();
-    return;
+  } else if (selectPhase === 'map') {
+    beginMatch();
   }
-  beginMatch();
 }
 
 function pickMap(key) {
@@ -1105,7 +1126,7 @@ function pickMap(key) {
   renderCharacterSelect();
 }
 
-function openCharacterSelect() {
+function showModeSelect() {
   gameState = 'select';
   clearInterval(timerInterval);
   winFocusFighter = null;
@@ -1120,10 +1141,31 @@ function openCharacterSelect() {
   document.getElementById('title-screen').style.display = 'none';
   document.getElementById('hud').style.display = 'none';
   document.getElementById('game-canvas').style.display = 'none';
-  document.getElementById('character-select').style.display = 'flex';
+  document.getElementById('character-select').style.display = 'none';
+  document.getElementById('mode-select').style.display = 'flex';
   selectTurn = 1;
+  selectPhase = 'mode';
+}
+
+function startModeSelect(mode) {
+  gameMode = mode;
+  syncMobileControlsMode();
   selectPhase = 'fighters';
+  selectTurn = 1;
+  document.getElementById('mode-select').style.display = 'none';
+  document.getElementById('character-select').style.display = 'flex';
   renderCharacterSelect();
+}
+
+function backToModeSelect() {
+  document.getElementById('character-select').style.display = 'none';
+  document.getElementById('mode-select').style.display = 'flex';
+  selectPhase = 'mode';
+  selectTurn = 1;
+}
+
+function openCharacterSelect() {
+  showModeSelect();
 }
 
 function beginMatch() {
@@ -1152,6 +1194,8 @@ window.pickMap = pickMap;
 window.setGameMode = setGameMode;
 window.setDifficulty = setDifficulty;
 window.setMobileControlLayout = setMobileControlLayout;
+window.startModeSelect = startModeSelect;
+window.backToModeSelect = backToModeSelect;
 
 // ── HUD ──
 function updateHUD() {

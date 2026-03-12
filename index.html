@@ -49,13 +49,26 @@
     <button class="start-btn" id="start-btn" onclick="startGame()">▶ PRESS START</button>
   </div>
 
-  <div id="character-select">
-    <h2>CHARACTER SELECT</h2>
-    <div class="select-options">
-      <div class="option-row" id="mode-row">
-        <button class="pill-btn" id="mode-pvp" onclick="setGameMode('pvp')">2 PLAYER</button>
-        <button class="pill-btn" id="mode-cpu" onclick="setGameMode('cpu')">VS COMPUTER</button>
+  <div id="mode-select">
+    <h2>SELECT GAME MODE</h2>
+    <div class="mode-banner">CHOOSE YOUR BATTLE</div>
+    <div class="mode-grid">
+      <div class="mode-card" onclick="startModeSelect('pvp')">
+        <div class="mode-icon">2️⃠</div>
+        <div class="mode-name">2 PLAYER</div>
+        <div class="mode-desc">Play with a friend<br>on same device</div>
       </div>
+      <div class="mode-card" onclick="startModeSelect('cpu')">
+        <div class="mode-icon">🤖</div>
+        <div class="mode-name">VS COMPUTER</div>
+        <div class="mode-desc">Challenge the CPU<br>Pick difficulty</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="character-select">
+    <h2 id="select-header">CHARACTER SELECT</h2>
+    <div class="select-options">
       <div class="option-row" id="difficulty-row">
         <button class="pill-btn" id="diff-easy" onclick="setDifficulty('easy')">EASY</button>
         <button class="pill-btn" id="diff-medium" onclick="setDifficulty('medium')">MEDIUM</button>
@@ -66,9 +79,13 @@
     <div class="select-grid" id="select-grid"></div>
     <div class="select-actions">
       <button class="select-btn" id="lock-btn" onclick="lockSelection()">LOCK P1</button>
+      <button class="select-btn" id="back-btn" onclick="backToModeSelect()">← BACK</button>
     </div>
     <div id="select-summary"></div>
   </div>
+
+  <!-- Special Effect Overlay -->
+  <div id="special-effect-overlay"></div>
 
   <!-- HUD -->
   <div id="hud">
