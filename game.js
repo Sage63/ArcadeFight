@@ -60,6 +60,43 @@ const SPECIAL_PROJECTILE_SPEED = 11;
 const SPECIAL_PROJECTILE_RADIUS = 12;
 const SPECIAL_PROJECTILE_LIFE = 90;
 
+const SFX_SRC = {
+  round: 'assets/sfx/8d82b5_Street_Fighter_Round_Sound_Effect.mp3',
+  one: 'assets/sfx/8d82b5_Street_Fighter_One_Sound_Effect.mp3',
+  two: 'assets/sfx/8d82b5_Street_Fighter_Two_Sound_Effect.mp3',
+  three: 'assets/sfx/8d82b5_Street_Fighter_Three_Sound_Effect.mp3',
+  four: 'assets/sfx/8d82b5_Street_Fighter_Four_Sound_Effect.mp3',
+  fight: 'assets/sfx/8d82b5_Street_Fighter_Fight_Sound_Effect.mp3',
+  win: 'assets/sfx/8d82b5_Street_Fighter_Win_Sound_Effect.mp3',
+  lose: 'assets/sfx/8d82b5_Street_Fighter_Lose_Sound_Effect.mp3',
+  punch: 'assets/sfx/8d82b5_Street_Fighter_Little_Punch_Sound_Effect.mp3',
+  kick: 'assets/sfx/8d82b5_Street_Fighter_Little_Kick_Sound_Effect.mp3',
+  hadouken: 'assets/sfx/8d82b5_Street_Fighter_Hadouken_Sound_Effect.mp3',
+};
+
+const SFX_BANK = Object.fromEntries(
+  Object.entries(SFX_SRC).map(([name, src]) => {
+    const audio = new Audio(encodeURI(src));
+    audio.preload = 'auto';
+    return [name, audio];
+  })
+);
+
+function playSfx(name, volume = 0.9) {
+  const base = SFX_BANK[name];
+  if (!base) return;
+  const clip = base.cloneNode(true);
+  clip.volume = Math.max(0, Math.min(1, volume));
+  clip.play().catch(() => {});
+}
+
+function playRoundSfx(round) {
+  playSfx('round', 0.85);
+  const numKey = round <= 1 ? 'one' : round === 2 ? 'two' : round === 3 ? 'three' : 'four';
+  setTimeout(() => playSfx(numKey, 0.9), 240);
+  setTimeout(() => playSfx('fight', 1), 580);
+}
+
 // Generate background stars once
 for (let i = 0; i < 60; i++) {
   bgStars.push({ x: Math.random() * W, y: Math.random() * 200, size: Math.random() < 0.3 ? 2 : 1, blink: Math.random() });
@@ -233,6 +270,31 @@ const FIGHTER_DEFS = {
 };
 
 const ROSTER = Object.keys(FIGHTER_DEFS);
+const PROFILE_IMAGE_BY_KEY = {
+  HERO_KNIGHT_2: 'assets/characters_profile/hero knight.png',
+  MARTIAL_HERO_1: 'assets/characters_profile/martial 1.png',
+  MARTIAL_HERO_2: 'assets/characters_profile/martial 2.png',
+  MARTIAL_HERO_3: 'assets/characters_profile/martial 3.png',
+  EVIL_WIZARD_2: 'assets/characters_profile/evil wizard.png',
+  WIZARD_PACK: 'assets/characters_profile/wizard.png',
+};
+
+function getProfileImage(key) {
+  return PROFILE_IMAGE_BY_KEY[key] || 'assets/characters_profile/hero knight.png';
+}
+
+const BALANCED_STATS = {
+  maxHP: 210,
+  speed: 4.8,
+  jumpForce: -15.3,
+};
+
+Object.values(FIGHTER_DEFS).forEach(def => {
+  def.maxHP = BALANCED_STATS.maxHP;
+  def.speed = BALANCED_STATS.speed;
+  def.jumpForce = BALANCED_STATS.jumpForce;
+});
+
 let selectedP1Key = ROSTER[0];
 let selectedP2Key = ROSTER[3] || ROSTER[1];
 let selectTurn = 1;
@@ -452,7 +514,7 @@ class Fighter {
     return { x: this.x + 4, y: this.y + 4, w: this.width - 8, h: this.height - 4 };
   }
 
-  takeDamage(amount, attacker) {
+  takeDamage(amount, attacker, hitType = 'punch') {
     if (this.invincible > 0 || this.state === 'ko') return 0;
     const blocked = this.blocking && this.onGround;
     const dmg = blocked ? Math.floor(amount * 0.15) : amount;
@@ -466,8 +528,21 @@ class Fighter {
       this.invincible = 0;
     } else if (!blocked) {
       this.state = 'hurt';
-      this.stateTimer = 18;
-      this.vx = attacker.facing * 5;
+      if (hitType === 'special' || hitType === 'projectile') {
+        this.stateTimer = 28;
+        this.vx = attacker.facing * 9;
+        this.vy = -9.5;
+        this.onGround = false;
+      } else if (hitType === 'kick') {
+        this.stateTimer = 22;
+        this.vx = attacker.facing * 7;
+        this.vy = -5.5;
+        this.onGround = false;
+      } else {
+        this.stateTimer = 16;
+        this.vx = attacker.facing * 5.5;
+        if (this.onGround) this.vy = -1.5;
+      }
       this.invincible = 20;
       this.shakeX = 8;
       this.shakeTimer = 8;
@@ -529,13 +604,16 @@ class Fighter {
       if (!this.isAttacking() && this.stateTimer === 0) {
         if (keys[this.controls.special] && this.specialMeter >= 100 && this.stamina >= STAMINA_COST.special) {
           this.startAttack('special', ATTACK_DURATIONS.special, 40);
+          playSfx('hadouken', 0.95);
           this.specialMeter = 0;
           spawnSpecialEffect(this);
           spawnSpecialProjectile(this);
         } else if (keys[this.controls.kick] && this.attackCooldown === 0 && this.stamina >= STAMINA_COST.kick) {
           this.startAttack('kick', ATTACK_DURATIONS.kick, 28);
+          playSfx('kick', 0.8);
         } else if (keys[this.controls.punch] && this.attackCooldown === 0 && this.stamina >= STAMINA_COST.punch) {
           this.startAttack('punch', ATTACK_DURATIONS.punch, 18);
+          playSfx('punch', 0.8);
         }
       }
 
@@ -572,6 +650,10 @@ class Fighter {
       this.vy = 0;
       this.onGround = true;
       if (this.state === 'jump') this.state = 'idle';
+    }
+
+    if (this.state === 'hurt' && this.onGround) {
+      this.vx *= 0.86;
     }
 
     // Walls
@@ -783,7 +865,7 @@ function updateProjectiles() {
     const hb = target.getHurtbox();
     const hit = pr.x + pr.radius > hb.x && pr.x - pr.radius < hb.x + hb.w && pr.y + pr.radius > hb.y && pr.y - pr.radius < hb.y + hb.h;
     if (hit) {
-      const dmg = target.takeDamage(pr.damage, pr.owner);
+      const dmg = target.takeDamage(pr.damage, pr.owner, 'projectile');
       if (dmg > 0) {
         pr.owner.specialMeter = Math.min(100, pr.owner.specialMeter + 10);
         spawnHitEffect(target.cx, target.cy - 16, pr.color);
@@ -909,7 +991,7 @@ function checkHits(attacker, defender) {
   const atk = attacker.getAttackBox();
   const def = defender.getHurtbox();
   if (atk && rectsOverlap(atk, def)) {
-    const dmg = defender.takeDamage(atk.dmg, attacker);
+    const dmg = defender.takeDamage(atk.dmg, attacker, atk.type);
     attacker.attackHasHit = true;
     if (dmg > 0) {
       attacker.specialMeter = Math.min(100, attacker.specialMeter + 12);
@@ -1034,18 +1116,22 @@ function renderCharacterSelect() {
   syncMobileControlsMode();
 
   if (selectPhase === 'fighters') {
-    turn.textContent = 'PLAYER 1 PICK YOUR FIGHTER';
-    lockBtn.textContent = gameMode === 'cpu' ? 'CONFIRM & LOCK' : 'LOCK P1';
+    const isP2Turn = gameMode === 'pvp' && selectTurn === 2;
+    turn.textContent = isP2Turn ? 'PLAYER 2 PICK YOUR FIGHTER' : 'PLAYER 1 PICK YOUR FIGHTER';
+    lockBtn.textContent = gameMode === 'cpu' ? 'CONFIRM & LOCK' : (isP2Turn ? 'LOCK P2' : 'LOCK P1');
 
     grid.innerHTML = ROSTER.map(key => {
       const c = FIGHTER_DEFS[key];
       const p1Class = selectedP1Key === key ? 'selected-p1' : '';
-      const activeClass = selectedP1Key === key ? 'active-turn' : '';
-      return `<div class="char-card ${p1Class} ${activeClass}" onclick="pickCharacter('${key}')">
+      const p2Class = selectedP2Key === key ? 'selected-p2' : '';
+      const activeClass = (isP2Turn ? selectedP2Key === key : selectedP1Key === key) ? 'active-turn' : '';
+      const unavailable = isP2Turn && selectedP1Key === key;
+      const unavailableClass = unavailable ? 'unavailable' : '';
+      const clickAttr = unavailable ? '' : `onclick="pickCharacter('${key}')"`;
+      const profile = getProfileImage(key);
+      return `<div class="char-card ${p1Class} ${p2Class} ${activeClass} ${unavailableClass}" ${clickAttr}>
+        <div class="char-portrait"><img src="${encodeURI(profile)}" alt="${c.name} profile"></div>
         <div class="char-name">${c.name}</div>
-        <div class="char-stat">HP ${c.maxHP}</div>
-        <div class="char-stat">SPD ${c.speed.toFixed(1)} · JMP ${Math.abs(c.jumpForce).toFixed(1)}</div>
-        <div class="char-stat">${c.special}</div>
       </div>`;
     }).join('');
   } else if (selectPhase === 'map') {
@@ -1126,18 +1212,25 @@ function pickCharacter(key) {
       selectPhase = 'map';
       renderCharacterSelect();
     } else {
+      if (selectedP2Key === selectedP1Key) {
+        const fallback = ROSTER.find(k => k !== selectedP1Key);
+        if (fallback) selectedP2Key = fallback;
+      }
       selectTurn = 2;
       renderCharacterSelect();
     }
   } else {
+    if (key === selectedP1Key) return;
     selectedP2Key = key;
     renderCharacterSelect();
   }
 }
 
 function autoPickCPUCharacter() {
-  const randomIdx = Math.floor(Math.random() * ROSTER.length);
-  selectedP2Key = ROSTER[randomIdx];
+  const available = ROSTER.filter(k => k !== selectedP1Key);
+  const pool = available.length ? available : ROSTER;
+  const randomIdx = Math.floor(Math.random() * pool.length);
+  selectedP2Key = pool[randomIdx];
 }
 
 function lockSelection() {
@@ -1247,6 +1340,8 @@ function updateHUD() {
   document.getElementById('p2-special').classList.toggle('ready', p2.specialMeter >= 100);
   document.getElementById('p1-name').textContent = p1.name;
   document.getElementById('p2-name').textContent = p2.name;
+  document.getElementById('p1-profile').src = encodeURI(getProfileImage(selectedP1Key));
+  document.getElementById('p2-profile').src = encodeURI(getProfileImage(selectedP2Key));
   updateStars();
 }
 
@@ -1330,12 +1425,16 @@ function endRound(reason) {
 
   updateStars();
 
+  const isFinalRound = p1Wins >= 2 || p2Wins >= 2;
+
   const winCol = winner === 'p1' ? '#00e5ff' : '#ff4444';
   if (gameMode === 'cpu') {
     if (winner === 'p1') {
       showOverlay(reason === 'timeout' ? 'YOU WIN (TIME)' : 'YOU WIN', '', '#00e5ff');
+      if (!isFinalRound) playSfx('win', 0.95);
     } else {
       showOverlay(reason === 'timeout' ? 'YOU LOSE (TIME)' : 'YOU LOSE', '', '#ff4444');
+      if (!isFinalRound) playSfx('lose', 0.95);
     }
   } else {
     const winnerName = winner === 'p1' ? p1.name : p2.name;
@@ -1362,8 +1461,13 @@ function endGame(winner) {
   cameraFocusX = winFocusFighter ? winFocusFighter.cx : W / 2;
   cameraFocusY = winFocusFighter ? (winFocusFighter.cy - 44) : H / 2;
   if (gameMode === 'cpu') {
-    if (winner === 'p1') showOverlay('YOU WIN', 'PRESS START TO REPLAY', '#00e5ff');
-    else showOverlay('GAME OVER', 'YOU LOSE - PRESS START', '#ff4444');
+    if (winner === 'p1') {
+      showOverlay('YOU WIN', 'PRESS START TO REPLAY', '#00e5ff');
+      playSfx('win', 1);
+    } else {
+      showOverlay('GAME OVER', 'YOU LOSE - PRESS START', '#ff4444');
+      playSfx('lose', 1);
+    }
   } else {
     const winnerName = winner === 'p1' ? p1.name : p2.name;
     const winCol = winner === 'p1' ? '#00e5ff' : '#ff4444';
@@ -1413,17 +1517,15 @@ function updateWinCamera() {
 function startCountdown() {
   gameState = 'countdown';
   countdownVal = 3;
-  showOverlay('ROUND ' + roundNum, '', '#ffd700');
+  if (roundNum === 1) showOverlay('FIRST ROUND FIGHT', '', '#ffd700');
+  else showOverlay('ROUND ' + Math.min(roundNum, 4) + ' FIGHT', '', '#ffd700');
+  playRoundSfx(roundNum);
 
-  setTimeout(() => { showOverlay('3', '', '#ffd700'); }, 800);
-  setTimeout(() => { showOverlay('2', '', '#ffd700'); }, 1600);
-  setTimeout(() => { showOverlay('1', '', '#ffd700'); }, 2400);
-  setTimeout(() => { showOverlay('FIGHT!', '', '#00ff88'); }, 3200);
   setTimeout(() => {
     hideOverlay();
     gameState = 'fighting';
     startRoundTimer();
-  }, 4000);
+  }, 1850);
 }
 
 // ── GAME START ──
