@@ -748,6 +748,59 @@
     animation: blink 0.8s step-end infinite;
   }
 
+  #pause-menu {
+    display: none;
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    background: rgba(4, 6, 14, 0.78);
+    align-items: center;
+    justify-content: center;
+  }
+
+  .pause-panel {
+    width: min(420px, 90%);
+    border: 3px solid #38416e;
+    background: linear-gradient(180deg, #171c35 0%, #0f1326 100%);
+    box-shadow: 0 14px 30px rgba(0,0,0,0.45);
+    padding: 18px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .pause-title {
+    font-size: 14px;
+    color: var(--gold);
+    margin-bottom: 6px;
+    text-shadow: 2px 2px 0 #5d4410;
+  }
+
+  .pause-btn {
+    width: 100%;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    border: 2px solid #49558a;
+    background: linear-gradient(180deg, #2b3458 0%, #1a2037 100%);
+    color: #ecf0ff;
+    padding: 11px 10px;
+    cursor: pointer;
+  }
+
+  .pause-btn:hover {
+    border-color: var(--gold);
+    color: #111;
+    background: linear-gradient(180deg, #ffe08a 0%, #ffc84f 100%);
+  }
+
+  .pause-hint {
+    margin-top: 8px;
+    font-size: 7px;
+    color: #9eabd6;
+    letter-spacing: 1px;
+  }
+
   /* ── FOOTER ── */
   #footer {
     font-size: 7px;

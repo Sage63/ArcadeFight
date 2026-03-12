@@ -27,7 +27,7 @@ function makeMapLayer(src) {
 }
 
 // ── GAME STATE ──
-let gameState = 'title'; // title | select | countdown | fighting | roundOver | gameOver
+let gameState = 'title'; // title | select | countdown | fighting | finishSlowmo | paused | roundOver | gameOver
 let roundTimer = 99;
 let timerInterval = null;
 let roundNum = 1;
@@ -49,6 +49,9 @@ let lastMobileVibrationAt = 0;
 let screenShake = 0;
 let specialFreezeFrames = 0;
 let lastCombatSfxAt = 0;
+let finishSlowmoFrames = 0;
+let finishSlowmoTick = 0;
+let pendingRoundEndReason = null;
 
 const ATTACK_DURATIONS = { punch: 16, kick: 24, special: 32 };
 const STAMINA_MAX = 100;
@@ -60,10 +63,15 @@ const SPECIAL_PROJECTILE_DAMAGE = 36;
 const SPECIAL_PROJECTILE_SPEED = 11;
 const SPECIAL_PROJECTILE_RADIUS = 12;
 const SPECIAL_PROJECTILE_LIFE = 90;
+const ROUND_FINISH_SLOWMO_FRAMES = 44;
+const ROUND_FINISH_SLOWMO_SKIP = 3;
 const ROUND_ANNOUNCE_TOTAL_MS = 3600;
 const INTER_ROUND_DELAY_MS = 4600;
 
 const SFX_SRC = {
+  coin: 'assets/sfx/8d82b5_Street_Fighter_Coin_Sound_Effect.mp3',
+  choose: 'assets/sfx/8d82b5_Street_Fighter_Choose_Sound_Effect.mp3',
+  introBgm: 'assets/sfx/intro-music-bg.mp3',
   round: 'assets/sfx/8d82b5_Street_Fighter_Round_Sound_Effect.mp3',
   one: 'assets/sfx/8d82b5_Street_Fighter_One_Sound_Effect.mp3',
   two: 'assets/sfx/8d82b5_Street_Fighter_Two_Sound_Effect.mp3',
@@ -72,6 +80,7 @@ const SFX_SRC = {
   fight: 'assets/sfx/8d82b5_Street_Fighter_Fight_Sound_Effect.mp3',
   win: 'assets/sfx/8d82b5_Street_Fighter_Win_Sound_Effect.mp3',
   lose: 'assets/sfx/8d82b5_Street_Fighter_Lose_Sound_Effect.mp3',
+  ko: 'assets/sfx/Street Fighter K.O - QuickSounds.com.mp3',
   you: 'assets/sfx/8d82b5_Street_Fighter_You_Sound_Effect.mp3',
   punch: 'assets/sfx/8d82b5_Street_Fighter_Little_Punch_Sound_Effect.mp3',
   kick: 'assets/sfx/8d82b5_Street_Fighter_Little_Kick_Sound_Effect.mp3',
@@ -111,15 +120,42 @@ function playRoundSfx(round) {
   setTimeout(() => playVoice('fight', 1), 2250);
 }
 
+const introBgm = SFX_BANK.introBgm;
+if (introBgm) {
+  introBgm.loop = true;
+  introBgm.volume = 0.42;
+}
+
+function tryStartIntroBgm() {
+  if (!introBgm) return;
+  if (gameState !== 'title') return;
+  introBgm.play().catch(() => {});
+}
+
+function stopIntroBgm() {
+  if (!introBgm) return;
+  introBgm.pause();
+  introBgm.currentTime = 0;
+}
+
 function playOutcomeSfx(outcome) {
   playVoice('you', 1);
   setTimeout(() => playVoice(outcome, 1), 640);
 }
 
-function queueOutcomeSfx(outcome) {
+function queueOutcomeSfx(outcome, extraDelayMs = 0) {
   const elapsed = performance.now() - lastCombatSfxAt;
-  const delay = Math.max(0, 850 - elapsed);
+  const delay = Math.max(extraDelayMs, Math.max(0, 850 - elapsed));
   setTimeout(() => playOutcomeSfx(outcome), delay);
+}
+
+function triggerRoundFinishSlowmo(reason) {
+  if (gameState !== 'fighting') return;
+  clearInterval(timerInterval);
+  gameState = 'finishSlowmo';
+  pendingRoundEndReason = reason;
+  finishSlowmoFrames = ROUND_FINISH_SLOWMO_FRAMES;
+  finishSlowmoTick = 0;
 }
 
 // Generate background stars once
@@ -1033,7 +1069,15 @@ function checkHits(attacker, defender) {
 
 // ── INPUT ──
 const keys = {};
-document.addEventListener('keydown', e => { keys[e.code] = true; e.preventDefault(); });
+document.addEventListener('keydown', e => {
+  if (e.code === 'Escape') {
+    togglePause();
+    e.preventDefault();
+    return;
+  }
+  keys[e.code] = true;
+  e.preventDefault();
+});
 document.addEventListener('keyup', e => { keys[e.code] = false; });
 const cpuKeys = {};
 
@@ -1236,6 +1280,7 @@ function pickCharacter(key) {
   if (selectTurn === 1) {
     selectedP1Key = key;
     if (gameMode === 'cpu') {
+      playSfx('choose', 0.9);
       autoPickCPUCharacter();
       selectPhase = 'map';
       renderCharacterSelect();
@@ -1264,11 +1309,13 @@ function autoPickCPUCharacter() {
 function lockSelection() {
   if (selectPhase === 'fighters') {
     if (selectTurn === 2) {
+      playSfx('choose', 0.9);
       selectPhase = 'map';
       renderCharacterSelect();
       return;
     }
   } else if (selectPhase === 'map') {
+    playSfx('choose', 0.9);
     beginMatch();
   }
 }
@@ -1277,6 +1324,44 @@ function pickMap(key) {
   if (!MAP_DEFS[key]) return;
   selectedMapKey = key;
   renderCharacterSelect();
+}
+
+function showPauseMenu() {
+  const pm = document.getElementById('pause-menu');
+  if (pm) pm.style.display = 'flex';
+}
+
+function hidePauseMenu() {
+  const pm = document.getElementById('pause-menu');
+  if (pm) pm.style.display = 'none';
+}
+
+function togglePause() {
+  if (gameState === 'fighting') {
+    gameState = 'paused';
+    showPauseMenu();
+    return;
+  }
+  if (gameState === 'paused') {
+    gameState = 'fighting';
+    hidePauseMenu();
+  }
+}
+
+function resumeGame() {
+  if (gameState !== 'paused') return;
+  gameState = 'fighting';
+  hidePauseMenu();
+}
+
+function restartMatchFromPause() {
+  hidePauseMenu();
+  beginMatch();
+}
+
+function backToSelectFromPause() {
+  hidePauseMenu();
+  openCharacterSelect();
 }
 
 function showModeSelect() {
@@ -1291,6 +1376,7 @@ function showModeSelect() {
     animFrame = null;
   }
   hideOverlay();
+  hidePauseMenu();
   document.getElementById('title-screen').style.display = 'none';
   document.getElementById('hud').style.display = 'none';
   document.getElementById('game-canvas').style.display = 'none';
@@ -1322,6 +1408,7 @@ function openCharacterSelect() {
 }
 
 function beginMatch() {
+  hidePauseMenu();
   document.getElementById('character-select').style.display = 'none';
   document.getElementById('hud').style.display = 'flex';
   document.getElementById('game-canvas').style.display = 'block';
@@ -1349,6 +1436,9 @@ window.setDifficulty = setDifficulty;
 window.setMobileControlLayout = setMobileControlLayout;
 window.startModeSelect = startModeSelect;
 window.backToModeSelect = backToModeSelect;
+window.resumeGame = resumeGame;
+window.restartMatchFromPause = restartMatchFromPause;
+window.backToSelectFromPause = backToSelectFromPause;
 
 // ── HUD ──
 function updateHUD() {
@@ -1414,7 +1504,7 @@ function startRoundTimer() {
     roundTimer--;
     document.getElementById('timer').textContent = roundTimer;
     if (roundTimer <= 0) {
-      endRound('timeout');
+      triggerRoundFinishSlowmo('timeout');
     }
   }, 1000);
 }
@@ -1471,7 +1561,7 @@ function endRound(reason) {
   }
 
   if (p1Wins >= 2 || p2Wins >= 2) {
-    endGame(winner);
+    endGame(winner, reason);
     return;
   }
 
@@ -1481,20 +1571,24 @@ function endRound(reason) {
   }, INTER_ROUND_DELAY_MS);
 }
 
-function endGame(winner) {
+function endGame(winner, reason = 'ko') {
   gameState = 'gameOver';
   winFocusFighter = winner === 'p1' ? p1 : p2;
   // Snap camera partway to winner so final zoom starts instantly.
   cameraZoom = 1.35;
   cameraFocusX = winFocusFighter ? winFocusFighter.cx : W / 2;
   cameraFocusY = winFocusFighter ? (winFocusFighter.cy - 44) : H / 2;
+  if (reason === 'ko') {
+    playSfx('ko', 1);
+  }
+
   if (gameMode === 'cpu') {
     if (winner === 'p1') {
       showOverlay('YOU WIN', 'PRESS START TO REPLAY', '#00e5ff');
-      queueOutcomeSfx('win');
+      queueOutcomeSfx('win', reason === 'ko' ? 1200 : 0);
     } else {
       showOverlay('GAME OVER', 'YOU LOSE - PRESS START', '#ff4444');
-      queueOutcomeSfx('lose');
+      queueOutcomeSfx('lose', reason === 'ko' ? 1200 : 0);
     }
   } else {
     const winnerName = winner === 'p1' ? p1.name : p2.name;
@@ -1517,6 +1611,9 @@ function nextRound() {
   hitEffects = [];
   projectiles = [];
   winFocusFighter = null;
+  pendingRoundEndReason = null;
+  finishSlowmoFrames = 0;
+  finishSlowmoTick = 0;
   cameraZoom = 1;
   cameraFocusX = W / 2;
   cameraFocusY = H / 2;
@@ -1563,10 +1660,17 @@ function startCountdown() {
 
 // ── GAME START ──
 function startGame() {
+  stopIntroBgm();
+  playSfx('coin', 1);
   openCharacterSelect();
 }
 
 window.startGame = startGame;
+
+['pointerdown', 'keydown', 'touchstart'].forEach(evt => {
+  window.addEventListener(evt, tryStartIntroBgm, { passive: true });
+});
+tryStartIntroBgm();
 
 // ── MAIN GAME LOOP ──
 function gameLoop(ts) {
@@ -1613,7 +1717,21 @@ function gameLoop(ts) {
     checkHits(p2, p1);
     updateProjectiles();
 
-    if (p1.hp <= 0 || p2.hp <= 0) endRound('ko');
+    if (p1.hp <= 0 || p2.hp <= 0) triggerRoundFinishSlowmo('ko');
+  }
+
+  if (gameState === 'finishSlowmo') {
+    finishSlowmoTick++;
+    if (finishSlowmoTick % ROUND_FINISH_SLOWMO_SKIP === 0 && p1 && p2) {
+      p1.updateAnimation();
+      p2.updateAnimation();
+    }
+    finishSlowmoFrames--;
+    if (finishSlowmoFrames <= 0) {
+      const reason = pendingRoundEndReason || 'ko';
+      pendingRoundEndReason = null;
+      endRound(reason);
+    }
   }
 
   // Keep fighters alive visually during countdown with idle loop animation.
