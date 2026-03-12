@@ -48,6 +48,7 @@ let mobileControlLayout = 'large';
 let lastMobileVibrationAt = 0;
 let screenShake = 0;
 let specialFreezeFrames = 0;
+let lastCombatSfxAt = 0;
 
 const ATTACK_DURATIONS = { punch: 16, kick: 24, special: 32 };
 const STAMINA_MAX = 100;
@@ -59,6 +60,8 @@ const SPECIAL_PROJECTILE_DAMAGE = 36;
 const SPECIAL_PROJECTILE_SPEED = 11;
 const SPECIAL_PROJECTILE_RADIUS = 12;
 const SPECIAL_PROJECTILE_LIFE = 90;
+const ROUND_ANNOUNCE_TOTAL_MS = 3600;
+const INTER_ROUND_DELAY_MS = 4600;
 
 const SFX_SRC = {
   round: 'assets/sfx/8d82b5_Street_Fighter_Round_Sound_Effect.mp3',
@@ -69,6 +72,7 @@ const SFX_SRC = {
   fight: 'assets/sfx/8d82b5_Street_Fighter_Fight_Sound_Effect.mp3',
   win: 'assets/sfx/8d82b5_Street_Fighter_Win_Sound_Effect.mp3',
   lose: 'assets/sfx/8d82b5_Street_Fighter_Lose_Sound_Effect.mp3',
+  you: 'assets/sfx/8d82b5_Street_Fighter_You_Sound_Effect.mp3',
   punch: 'assets/sfx/8d82b5_Street_Fighter_Little_Punch_Sound_Effect.mp3',
   kick: 'assets/sfx/8d82b5_Street_Fighter_Little_Kick_Sound_Effect.mp3',
   hadouken: 'assets/sfx/8d82b5_Street_Fighter_Hadouken_Sound_Effect.mp3',
@@ -90,11 +94,32 @@ function playSfx(name, volume = 0.9) {
   clip.play().catch(() => {});
 }
 
+// Voice/announcer lines should play on a dedicated channel to keep timing stable and clear.
+function playVoice(name, volume = 1) {
+  const clip = SFX_BANK[name];
+  if (!clip) return;
+  clip.pause();
+  clip.currentTime = 0;
+  clip.volume = Math.max(0, Math.min(1, volume));
+  clip.play().catch(() => {});
+}
+
 function playRoundSfx(round) {
-  playSfx('round', 0.85);
+  setTimeout(() => playVoice('round', 1), 120);
   const numKey = round <= 1 ? 'one' : round === 2 ? 'two' : round === 3 ? 'three' : 'four';
-  setTimeout(() => playSfx(numKey, 0.9), 240);
-  setTimeout(() => playSfx('fight', 1), 580);
+  setTimeout(() => playVoice(numKey, 1), 1050);
+  setTimeout(() => playVoice('fight', 1), 2250);
+}
+
+function playOutcomeSfx(outcome) {
+  playVoice('you', 1);
+  setTimeout(() => playVoice(outcome, 1), 640);
+}
+
+function queueOutcomeSfx(outcome) {
+  const elapsed = performance.now() - lastCombatSfxAt;
+  const delay = Math.max(0, 850 - elapsed);
+  setTimeout(() => playOutcomeSfx(outcome), delay);
 }
 
 // Generate background stars once
@@ -604,15 +629,18 @@ class Fighter {
       if (!this.isAttacking() && this.stateTimer === 0) {
         if (keys[this.controls.special] && this.specialMeter >= 100 && this.stamina >= STAMINA_COST.special) {
           this.startAttack('special', ATTACK_DURATIONS.special, 40);
+          lastCombatSfxAt = performance.now();
           playSfx('hadouken', 0.95);
           this.specialMeter = 0;
           spawnSpecialEffect(this);
           spawnSpecialProjectile(this);
         } else if (keys[this.controls.kick] && this.attackCooldown === 0 && this.stamina >= STAMINA_COST.kick) {
           this.startAttack('kick', ATTACK_DURATIONS.kick, 28);
+          lastCombatSfxAt = performance.now();
           playSfx('kick', 0.8);
         } else if (keys[this.controls.punch] && this.attackCooldown === 0 && this.stamina >= STAMINA_COST.punch) {
           this.startAttack('punch', ATTACK_DURATIONS.punch, 18);
+          lastCombatSfxAt = performance.now();
           playSfx('punch', 0.8);
         }
       }
@@ -1431,10 +1459,10 @@ function endRound(reason) {
   if (gameMode === 'cpu') {
     if (winner === 'p1') {
       showOverlay(reason === 'timeout' ? 'YOU WIN (TIME)' : 'YOU WIN', '', '#00e5ff');
-      if (!isFinalRound) playSfx('win', 0.95);
+      if (!isFinalRound) queueOutcomeSfx('win');
     } else {
       showOverlay(reason === 'timeout' ? 'YOU LOSE (TIME)' : 'YOU LOSE', '', '#ff4444');
-      if (!isFinalRound) playSfx('lose', 0.95);
+      if (!isFinalRound) queueOutcomeSfx('lose');
     }
   } else {
     const winnerName = winner === 'p1' ? p1.name : p2.name;
@@ -1450,7 +1478,7 @@ function endRound(reason) {
   setTimeout(() => {
     hideOverlay();
     nextRound();
-  }, 2500);
+  }, INTER_ROUND_DELAY_MS);
 }
 
 function endGame(winner) {
@@ -1463,10 +1491,10 @@ function endGame(winner) {
   if (gameMode === 'cpu') {
     if (winner === 'p1') {
       showOverlay('YOU WIN', 'PRESS START TO REPLAY', '#00e5ff');
-      playSfx('win', 1);
+      queueOutcomeSfx('win');
     } else {
       showOverlay('GAME OVER', 'YOU LOSE - PRESS START', '#ff4444');
-      playSfx('lose', 1);
+      queueOutcomeSfx('lose');
     }
   } else {
     const winnerName = winner === 'p1' ? p1.name : p2.name;
@@ -1517,15 +1545,20 @@ function updateWinCamera() {
 function startCountdown() {
   gameState = 'countdown';
   countdownVal = 3;
-  if (roundNum === 1) showOverlay('FIRST ROUND FIGHT', '', '#ffd700');
-  else showOverlay('ROUND ' + Math.min(roundNum, 4) + ' FIGHT', '', '#ffd700');
+  const roundLabel = Math.min(roundNum, 4);
+  showOverlay('ROUND ' + roundLabel, '', '#ffd700');
   playRoundSfx(roundNum);
+
+  // Street Fighter style text transition: ROUND X -> FIGHT!
+  setTimeout(() => {
+    showOverlay('FIGHT!', '', '#00ff88');
+  }, 2250);
 
   setTimeout(() => {
     hideOverlay();
     gameState = 'fighting';
     startRoundTimer();
-  }, 1850);
+  }, ROUND_ANNOUNCE_TOTAL_MS);
 }
 
 // ── GAME START ──
