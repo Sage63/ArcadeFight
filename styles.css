@@ -739,14 +739,19 @@
 
   #overlay-text.ko-callout {
     color: #ff2b2b !important;
+    font-size: 42px;
     text-shadow:
-      -2px -2px 0 #ffffff,
-      2px -2px 0 #ffffff,
-      -2px 2px 0 #ffffff,
-      2px 2px 0 #ffffff,
-      5px 5px 0 #640000,
-      0 0 14px rgba(255, 60, 60, 0.55);
+      -3px -3px 0 #ffffff,
+      3px -3px 0 #ffffff,
+      -3px 3px 0 #ffffff,
+      3px 3px 0 #ffffff,
+      0 0 0 #ffffff,
+      6px 6px 0 #8f0000,
+      10px 10px 0 #2f0000,
+      0 0 16px rgba(255, 40, 40, 0.78),
+      0 0 28px rgba(255, 80, 80, 0.52);
     letter-spacing: 2px;
+    filter: drop-shadow(0 0 10px rgba(255, 74, 74, 0.45));
   }
 
   #overlay-sub {

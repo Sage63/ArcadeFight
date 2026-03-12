@@ -371,8 +371,8 @@ function getProfileImage(key) {
 
 const BALANCED_STATS = {
   maxHP: 210,
-  speed: 4.8,
-  jumpForce: -15.3,
+  speed: 4.1,
+  jumpForce: -13.8,
 };
 
 Object.values(FIGHTER_DEFS).forEach(def => {
@@ -1091,6 +1091,39 @@ function drawImageCover(image, dx, dy, dw, dh) {
   const zY = dy - (zH - dh) * 0.5;
 
   ctx.drawImage(image, sx, sy, sw, sh, zX, zY, zW, zH);
+}
+
+function drawFighterShadow(f) {
+  if (!f) return;
+  const distanceFromFloor = Math.max(0, FLOOR_Y - (f.y + f.height));
+  const airborne = Math.min(1, distanceFromFloor / 120);
+  const baseRx = f.width * 0.52;
+  const baseRy = 6.2;
+  const rx = baseRx * (1 - airborne * 0.4);
+  const ry = baseRy * (1 - airborne * 0.35);
+  const y = FLOOR_Y + 2;
+
+  // Outer soft shadow
+  ctx.globalAlpha = 0.18 * (1 - airborne * 0.6);
+  ctx.fillStyle = '#06070d';
+  ctx.beginPath();
+  ctx.ellipse(f.cx, y, rx * 1.28, ry * 1.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Mid shadow body
+  ctx.globalAlpha = 0.28 * (1 - airborne * 0.5);
+  ctx.fillStyle = '#05060b';
+  ctx.beginPath();
+  ctx.ellipse(f.cx, y, rx, ry, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Core contact shadow
+  ctx.globalAlpha = 0.4 * (1 - airborne * 0.45);
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.ellipse(f.cx, y + 0.5, rx * 0.62, ry * 0.62, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
 }
 
 // ── COLLISION DETECTION ──
@@ -1866,16 +1899,8 @@ function gameLoop(ts) {
     drawProjectiles();
   }
 
-  // Shadow under fighters
-  [p1, p2].forEach(f => {
-    if (!f) return;
-    ctx.globalAlpha = 0.3;
-    ctx.fillStyle = '#000';
-    ctx.beginPath();
-    ctx.ellipse(f.cx, FLOOR_Y + 2, f.width / 2, 5, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalAlpha = 1;
-  });
+  // SF2-style layered contact shadows under fighters.
+  [p1, p2].forEach(drawFighterShadow);
 
   ctx.restore();
 
